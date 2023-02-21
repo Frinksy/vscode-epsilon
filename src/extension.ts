@@ -1,4 +1,11 @@
 import * as vscode from 'vscode';
+import { workspace } from 'vscode';
+import {
+	LanguageClient,
+	LanguageClientOptions,
+	ServerOptions
+} from 'vscode-languageclient/node';
+let client: LanguageClient;
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -68,10 +75,15 @@ export function activate(context: vscode.ExtensionContext) {
 		
 		createNewEgxEglPair(folderPath);
 	}));
+
+	// Finally, start the language server
+	startLanguageServer(context).then((returnedClient) => {client = returnedClient;});
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate(): Thenable<void> | undefined {
+	return stopLanguageServer();
+}
 
 async function createNewEgxEglPair(folderPath: string | undefined): Promise<void> {
 	if (folderPath === undefined) {
@@ -105,4 +117,38 @@ async function createNewEgxEglPair(folderPath: string | undefined): Promise<void
 	const eglUri = vscode.Uri.file(eglPath);
 	await vscode.workspace.fs.writeFile(egxUri, new Uint8Array());
 	await vscode.workspace.fs.writeFile(eglUri, new Uint8Array());
+}
+
+async function startLanguageServer(context: vscode.ExtensionContext): Promise<LanguageClient> {
+	let serverOptions: ServerOptions = {
+		command: "epsilon-lsp",
+	};
+
+	let clientOptions: LanguageClientOptions = {
+		// Register the server for .eol documents.
+		documentSelector: [{ scheme: 'file', language: 'eol' }],
+		synchronize: {
+			// Is this needed? Docs say it's to notify changes about file in workspace.
+			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+		}
+	};
+
+	let client = new LanguageClient(
+		'epsilonLanguageServer',
+		'Epsilon Language Server',
+		serverOptions,
+		clientOptions,
+	);
+
+	// Start the client (which launches the server too).
+	client.start();
+
+	return client;
+}
+
+function stopLanguageServer(): Thenable<void> | undefined {
+	if (!client) {
+		return undefined;
+	}
+	return client.stop();
 }

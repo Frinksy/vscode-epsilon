@@ -3,7 +3,7 @@
   "displayName": "Eclipse Epsilon Languages",
   "description": "Syntax highlighting for the Eclipse Epsilon languages and Emfatic",
   "publisher": "SamHarris",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "icon": "images/epsilon-logo-sphere.png",
   "engines": {
     "vscode": "^1.70.0"
@@ -19,7 +19,8 @@
     "mde"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguage:eol"
   ],
   "main": "./out/extension.js",
   "browser": "./out/extension.js",
@@ -273,6 +274,12 @@
           "description": "Enable the New EGX/EGL Pair command in the Explorer context menu.",
           "type": "boolean",
           "default": false
+        },
+        "epsilonLanguageServer.maxNumberOfProblems": {
+          "scope": "resource",
+          "type": "number",
+          "default": "100",
+          "description": "Controlls the maximum number of problems produced by the server."
         }
       }
     }
@@ -284,6 +291,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "test": "node ./out/test/runTest.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^7.0.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.50.0",
