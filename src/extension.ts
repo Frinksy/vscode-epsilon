@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
 import { workspace } from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions
 } from 'vscode-languageclient/node';
-let client: LanguageClient;
+
+let client: LanguageClient | null;
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -77,7 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	// Finally, start the language server
-	startLanguageServer(context).then((returnedClient) => {client = returnedClient;});
+	startLanguageServer(context).then((returnedClient) => { client = returnedClient; });
 }
 
 // this method is called when your extension is deactivated
@@ -120,30 +123,64 @@ async function createNewEgxEglPair(folderPath: string | undefined): Promise<void
 }
 
 async function startLanguageServer(context: vscode.ExtensionContext): Promise<LanguageClient> {
-	let serverOptions: ServerOptions = {
-		command: "epsilon-lsp",
-	};
+	return new Promise(async (resolve, reject) => {
+		const storagePath = context.globalStorageUri.fsPath;
+		const jarPath = path.join(storagePath,"epsilon-ls.jar");
+		let effectiveJarPath = jarPath;
 
-	let clientOptions: LanguageClientOptions = {
-		// Register the server for .eol documents.
-		documentSelector: [{ scheme: 'file', language: 'eol' }],
-		synchronize: {
-			// Is this needed? Docs say it's to notify changes about file in workspace.
-			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+		// Make sure the global storage dir exists
+		if (!fs.existsSync(storagePath)) {
+			fs.mkdirSync(storagePath);
 		}
-	};
 
-	let client = new LanguageClient(
-		'epsilonLanguageServer',
-		'Epsilon Language Server',
-		serverOptions,
-		clientOptions,
-	);
+		let configuredPath: string | undefined = vscode.workspace.getConfiguration().get("epsilon.languageServerPath");
 
-	// Start the client (which launches the server too).
-	client.start();
+		if (configuredPath) {
+			effectiveJarPath = configuredPath;
+		}
+		
+		
+		while (!fs.existsSync(effectiveJarPath)) {
+			try {
+				await notFoundMessageBox();
+			} catch {
+				// Just give up on launching the language server. User will have to reload the window.
+				return null;
+			}
+			configuredPath = vscode.workspace.getConfiguration().get("epsilon.languageServerPath");
+			if (configuredPath) {
+				effectiveJarPath = configuredPath;
+			}
 
-	return client;
+
+		}
+
+		let serverOptions: ServerOptions = {
+			command: "java",
+			args: ["-jar", effectiveJarPath]
+		};
+
+		let clientOptions: LanguageClientOptions = {
+			// Register the server for .eol documents.
+			documentSelector: [{ scheme: 'file', language: 'eol' }],
+			synchronize: {
+				// Is this needed? Docs say it's to notify changes about file in workspace.
+				fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+			}
+		};
+
+		let client = new LanguageClient(
+			'epsilonLanguageServer',
+			'Epsilon Language Server',
+			serverOptions,
+			clientOptions,
+		);
+
+		// Start the client (which launches the server too).
+		client.start();
+
+		resolve(client);
+	});
 }
 
 function stopLanguageServer(): Thenable<void> | undefined {
@@ -151,4 +188,21 @@ function stopLanguageServer(): Thenable<void> | undefined {
 		return undefined;
 	}
 	return client.stop();
+}
+
+async function notFoundMessageBox() {
+	return new Promise((resolve, reject) => {
+		vscode.window.showErrorMessage("EpsilonLS has not been found: edit settings or reload.",
+			"Go to Settings UI", "Reload").then(async (answer) => {
+				if (answer === "Reload") {
+					resolve(answer);
+				}
+
+				if (answer === "Go to Settings UI") {
+					vscode.commands.executeCommand("workbench.action.openSettings", "@ext:samharris.eclipse-epsilon-languages");
+				}
+
+				else { reject(null); };
+			});
+	});
 }

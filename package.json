@@ -276,10 +276,16 @@
           "default": false
         },
         "epsilonLanguageServer.maxNumberOfProblems": {
-          "scope": "resource",
+          "scope": "window",
           "type": "number",
           "default": "100",
-          "description": "Controlls the maximum number of problems produced by the server."
+          "description": "Controls the maximum number of problems produced by the server."
+        },
+        "epsilon.languageServerPath": {
+          "scope": "window",
+          "type": "string",
+          "default": null,
+          "description": "The path to the epsilonLS JAR file."
         }
       }
     }
