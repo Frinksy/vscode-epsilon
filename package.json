@@ -275,10 +275,11 @@
           "type": "boolean",
           "default": false
         },
-        "epsilonLanguageServer.maxNumberOfProblems": {
+        "epsilon.maxNumberOfProblems": {
           "scope": "window",
-          "type": "number",
+          "type": "integer",
           "default": "100",
+          "minimum": "-1",
           "description": "Controls the maximum number of problems produced by the server."
         },
         "epsilon.languageServerPath": {

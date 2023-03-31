@@ -3,15 +3,17 @@ import { workspace } from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+	integer,
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient | null;
+let extensionContext: vscode.ExtensionContext;
 
 export function activate(context: vscode.ExtensionContext) {
-
+	extensionContext = context;
 	// This line of code will only be executed once when your extension is activated
 	// console.log('Congratulations, your extension "vscode-epsilon" is now active!');
 
@@ -75,12 +77,43 @@ export function activate(context: vscode.ExtensionContext) {
 		if (args.length > 0 && args[0].hasOwnProperty('path')) {
 			folderPath = args[0].path;
 		}
-		
+
 		createNewEgxEglPair(folderPath);
 	}));
 
+	// Handle changes to the config, i.e. reloading
+	workspace.onDidChangeConfiguration(onUpdatedConfiguration);
+
 	// Finally, start the language server
-	startLanguageServer(context).then((returnedClient) => { client = returnedClient; });
+	client = startLanguageServer(context);
+}
+
+async function onUpdatedConfiguration(event: vscode.ConfigurationChangeEvent) {
+	if (event.affectsConfiguration("epsilon")) {
+
+		 showConfigChangeNotificationBox();
+
+	}
+}
+
+function showConfigChangeNotificationBox(){
+	vscode.window.showInformationMessage(
+		"Changes to the configuration have been detected."
+		+ "Would you like to reload the Epsilon Language Server?",
+		"Yes", "No"
+		).then((answer) => {
+			if (answer === "Yes") {
+				startLanguageServer(extensionContext);
+				return;
+			}
+			if (answer === "No") {
+				return Promise.resolve();
+			}
+		});
+
+
+	
+
 }
 
 // this method is called when your extension is deactivated
@@ -122,64 +155,101 @@ async function createNewEgxEglPair(folderPath: string | undefined): Promise<void
 	await vscode.workspace.fs.writeFile(eglUri, new Uint8Array());
 }
 
-async function startLanguageServer(context: vscode.ExtensionContext): Promise<LanguageClient> {
-	return new Promise(async (resolve, reject) => {
-		const storagePath = context.globalStorageUri.fsPath;
-		const jarPath = path.join(storagePath,"epsilon-ls.jar");
-		let effectiveJarPath = jarPath;
 
-		// Make sure the global storage dir exists
-		if (!fs.existsSync(storagePath)) {
-			fs.mkdirSync(storagePath);
+function getJarPath(context: vscode.ExtensionContext): fs.PathLike | null {
+
+	const storagePath = context.globalStorageUri.fsPath;
+
+	// The global storage folder for the extension is not always
+	// created.
+	if (!fs.existsSync(storagePath)) {
+		fs.mkdirSync(storagePath);
+	}
+
+
+	const jarPath = path.join(storagePath, "epsilon-ls.jar");
+
+	let effectiveJarPath: string = jarPath;
+
+	let configuredPath: string | undefined = vscode.workspace.getConfiguration().get("epsilon.languageServerPath");
+
+	if (configuredPath) {
+		effectiveJarPath = configuredPath;
+	}
+
+
+	if (fs.existsSync(effectiveJarPath)) {
+		return effectiveJarPath;
+	}
+
+	return null;
+}
+
+function startLanguageServer(context: vscode.ExtensionContext): LanguageClient | null {
+
+	if (client) {
+		client.stop();
+	}
+
+
+	const jarPath = getJarPath(context);
+
+	if (jarPath === null) {
+		notFoundMessageBox();
+		return null;
+	}
+
+	const serverOptions: ServerOptions = {
+		command: "java",
+		args: ["-jar", jarPath.toString()]
+	};
+
+	let maxNumberOfProblems = -1;	
+	const configuredMaxProblems : integer | undefined = vscode.workspace.getConfiguration().get("epsilon.maxNumberOfProblems");
+	
+	if (configuredMaxProblems) {
+		maxNumberOfProblems = configuredMaxProblems;
+	}
+
+	let clientOptions: LanguageClientOptions = {
+		// Register the server for .eol documents
+		documentSelector: [{ scheme: 'file', language: 'eol' }],
+		synchronize: {
+			// Is this needed? Docs say it's to notify about changes in files in workspace.
+			fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
+		},
+		initializationOptions : {
+			maxNumberOfProblems
 		}
+	};
 
-		let configuredPath: string | undefined = vscode.workspace.getConfiguration().get("epsilon.languageServerPath");
 
-		if (configuredPath) {
-			effectiveJarPath = configuredPath;
+	client = new LanguageClient(
+		"epsilonLanguageServer",
+		"Epsilon Language Server",
+		serverOptions,
+		clientOptions,
+	);
+
+	client.start();
+
+	return client;
+}
+
+function notFoundMessageBox() {
+
+	vscode.window.showErrorMessage("EpsilonLS jar has not been found.",
+	"Got to settings UI",
+	"Reload").then(async (answer) => {
+		if (answer === "Reload") {
+			startLanguageServer(extensionContext);
 		}
-		
-		
-		while (!fs.existsSync(effectiveJarPath)) {
-			try {
-				await notFoundMessageBox();
-			} catch {
-				// Just give up on launching the language server. User will have to reload the window.
-				return null;
-			}
-			configuredPath = vscode.workspace.getConfiguration().get("epsilon.languageServerPath");
-			if (configuredPath) {
-				effectiveJarPath = configuredPath;
-			}
-
-
+		if (answer === "Got to settings UI") {
+			vscode.commands.executeCommand(
+				"workbench.action.openSettings",
+				"@ext:samharris.eclipse-epsilon-languages"
+			);
 		}
-
-		let serverOptions: ServerOptions = {
-			command: "java",
-			args: ["-jar", effectiveJarPath]
-		};
-
-		let clientOptions: LanguageClientOptions = {
-			// Register the server for .eol documents.
-			documentSelector: [{ scheme: 'file', language: 'eol' }],
-			synchronize: {
-				// Is this needed? Docs say it's to notify changes about file in workspace.
-				fileEvents: workspace.createFileSystemWatcher('**/.clientrc')
-			}
-		};
-
-		let client = new LanguageClient(
-			'epsilonLanguageServer',
-			'Epsilon Language Server',
-			serverOptions,
-			clientOptions,
-		);
-
-		// Start the client (which launches the server too).
-		client.start();
-
-		resolve(client);
 	});
 }
 
@@ -188,21 +258,4 @@ function stopLanguageServer(): Thenable<void> | undefined {
 		return undefined;
 	}
 	return client.stop();
-}
-
-async function notFoundMessageBox() {
-	return new Promise((resolve, reject) => {
-		vscode.window.showErrorMessage("EpsilonLS has not been found: edit settings or reload.",
-			"Go to Settings UI", "Reload").then(async (answer) => {
-				if (answer === "Reload") {
-					resolve(answer);
-				}
-
-				if (answer === "Go to Settings UI") {
-					vscode.commands.executeCommand("workbench.action.openSettings", "@ext:samharris.eclipse-epsilon-languages");
-				}
-
-				else { reject(null); };
-			});
-	});
 }
