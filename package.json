@@ -256,6 +256,11 @@
         "command": "epsilon.newEgxEglPair",
         "title": "New EGX/EGL Pair",
         "category": "Epsilon"
+      },
+      {
+        "command": "epsilon.restartLanguageServer",
+        "title": "Restart Epsilon Language Server",
+        "category": "Epsilon"
       }
     ],
     "menus": {

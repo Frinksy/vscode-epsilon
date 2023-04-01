@@ -81,6 +81,10 @@ export function activate(context: vscode.ExtensionContext) {
 		createNewEgxEglPair(folderPath);
 	}));
 
+	subscriptions.push(vscode.commands.registerCommand("epsilon.restartLanguageServer", () => {
+		startLanguageServer(context);
+	}));
+
 	// Handle changes to the config, i.e. reloading
 	workspace.onDidChangeConfiguration(onUpdatedConfiguration);
 
